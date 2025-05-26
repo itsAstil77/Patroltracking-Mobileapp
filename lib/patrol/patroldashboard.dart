@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geolocator/geolocator.dart' as geo;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
 import 'package:patroltracking/constants.dart';
@@ -39,7 +41,7 @@ class _PatrolDashboardScreenState extends State<PatrolDashboardScreen> {
 
   Future<void> _initializeDashboard() async {
     List<EventChecklistGroup> events = await ApiService.fetchGroupedChecklists(
-      widget.userdata['id'],
+      widget.userdata['userId'],
       widget.token,
     );
 
@@ -95,6 +97,29 @@ class _PatrolDashboardScreenState extends State<PatrolDashboardScreen> {
     });
   }
 
+  Future<Position> _getCurrentLocation() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      throw Exception('Location services are disabled.');
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        throw Exception('Location permission denied.');
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      throw Exception('Location permission permanently denied.');
+    }
+
+    return await Geolocator.getCurrentPosition(
+      desiredAccuracy: geo.LocationAccuracy.high,
+    );
+  }
+
   void _showStartPatrolPopup({required EventChecklistGroup event}) {
     showDialog(
       context: context,
@@ -102,21 +127,32 @@ class _PatrolDashboardScreenState extends State<PatrolDashboardScreen> {
       builder: (context) => AlertDialog(
         title: const Text("Start Patrol"),
         content:
-            Text("Do you want to start the workflow: ${event.workflowId}?"),
+            Text("Do you want to start the assignment: ${event.workflowId}?"),
         actions: [
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              final success = await ApiService.startWorkflow(
-                event.workflowId,
-                widget.token,
-              );
-              if (success) {
-                _startTracking();
-                _navigateToPatrolEventCheckScreen(event);
-              } else {
+              try {
+                final position = await _getCurrentLocation();
+
+                final success = await ApiService.startWorkflow(
+                  event.workflowId,
+                  widget.token,
+                  latitude: position.latitude,
+                  longitude: position.longitude,
+                );
+
+                if (success) {
+                  _startTracking();
+                  _navigateToPatrolEventCheckScreen(event);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Failed to start assignment")),
+                  );
+                }
+              } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Failed to start workflow")),
+                  SnackBar(content: Text("Location error: ${e.toString()}")),
                 );
               }
             },
@@ -150,7 +186,7 @@ class _PatrolDashboardScreenState extends State<PatrolDashboardScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Workflow Completed"),
-        content: const Text("This workflow has already been completed."),
+        content: const Text("This assignment has already been completed."),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -159,6 +195,63 @@ class _PatrolDashboardScreenState extends State<PatrolDashboardScreen> {
         ],
       ),
     );
+  }
+
+  void _showSOSPopup() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text("Confirmation Box!"),
+        content: Text("Are you sure to submit SOS?"),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+
+              _sendSOSAlert();
+            },
+            child: const Text("Yes"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("No"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _sendSOSAlert() async {
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: geo.LocationAccuracy.high,
+      );
+
+      final response = await ApiService.sendSOSAlert(
+        token: widget.token,
+        userid: widget.userdata['userId'],
+        latitude: position.latitude,
+        longitude: position.longitude,
+        remarks: "Emergency! Immediate help needed!",
+      );
+
+      // Check status inside response map
+      if (response['message'] == 'SOS alert saved successfully.') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("🚨 SOS Alert Sent")),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text("🚨 Failed to send SOS: ${response['message']}")),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("🚨 SOS Error: $e")),
+      );
+    }
   }
 
   @override
@@ -178,6 +271,14 @@ class _PatrolDashboardScreenState extends State<PatrolDashboardScreen> {
           ),
         ),
         title: Text('Patrol Dashboard', style: AppConstants.headingStyle),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.sos, color: Colors.white),
+            // label: const Text("Send SOS"),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: _showSOSPopup,
+          )
+        ],
       ),
       drawer: CustomDrawer(userdata: widget.userdata, token: widget.token),
       body: Column(
@@ -213,7 +314,7 @@ class _PatrolDashboardScreenState extends State<PatrolDashboardScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Assigned Workflow',
+                    'Assigned assignment',
                     style: AppConstants.headingStyle.copyWith(
                       color: AppConstants.primaryColor,
                       fontWeight: FontWeight.bold,
@@ -224,7 +325,7 @@ class _PatrolDashboardScreenState extends State<PatrolDashboardScreen> {
                     child: _eventGroups.isEmpty
                         ? const Center(
                             child: Text(
-                              "No workflow assigned",
+                              "No assignment assigned",
                               style: TextStyle(
                                 color: AppConstants.primaryColor,
                               ),
@@ -260,7 +361,7 @@ class _PatrolDashboardScreenState extends State<PatrolDashboardScreen> {
                                           .showSnackBar(
                                         const SnackBar(
                                             content: Text(
-                                                "Unknown workflow status")),
+                                                "Unknown assignment status")),
                                       );
                                     }
                                   },

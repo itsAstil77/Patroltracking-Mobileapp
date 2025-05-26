@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:patroltracking/MMEFeatures/audiorecorder.dart';
@@ -165,6 +166,45 @@ class _PatrolMultimediaScreenState extends State<PatrolMultimediaScreen> {
     });
   }
 
+  Future<Position?> _getCurrentPosition() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    // Check if location services are enabled
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Location services are disabled.")),
+      );
+      return null;
+    }
+
+    // Request permission
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Location permission denied.")),
+        );
+        return null;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text("Location permission permanently denied.")),
+      );
+      return null;
+    }
+
+    // Get the current position
+    return await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+  }
+
   Future<void> _uploadData() async {
     if (_mediaFile == null || _mediaType == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -176,15 +216,32 @@ class _PatrolMultimediaScreenState extends State<PatrolMultimediaScreen> {
     setState(() => _isUploading = true);
 
     try {
+      final position = await _getCurrentPosition();
+      if (position == null) {
+        setState(() => _isUploading = false);
+        return;
+      }
+
       final response = await ApiService.uploadMultimedia(
         token: widget.token,
         checklistId: widget.checklistId,
         mediaFile: _mediaFile!,
         mediaType: _mediaType!,
         description: _remarksController.text.trim(),
-        patrolId: widget.user['id'],
-        createdBy: widget.user['id'],
+        patrolId: widget.user['userId'],
+        createdBy: widget.user['userId'],
+        latitude: position.latitude,
+        longitude: position.longitude,
       );
+      // final response = await ApiService.uploadMultimedia(
+      //   token: widget.token,
+      //   checklistId: widget.checklistId,
+      //   mediaFile: _mediaFile!,
+      //   mediaType: _mediaType!,
+      //   description: _remarksController.text.trim(),
+      //   patrolId: widget.user['id'],
+      //   createdBy: widget.user['id'], latitude: null, longitude: null,
+      // );
 
       // Save signature if provided
       if (_signatureFile == null && _signatureController.isNotEmpty) {
@@ -201,7 +258,7 @@ class _PatrolMultimediaScreenState extends State<PatrolMultimediaScreen> {
       if (_signatureFile != null) {
         final signatureResponse = await ApiService.uploadSignature(
           signatureFile: _signatureFile!,
-          patrolId: widget.user['id'],
+          patrolId: widget.user['userId'],
           checklistId: widget.checklistId,
           token: widget.token,
         );

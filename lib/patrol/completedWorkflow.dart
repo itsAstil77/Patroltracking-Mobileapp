@@ -21,7 +21,7 @@ class _WorkflowScreenState extends State<WorkflowScreen> {
   void initState() {
     super.initState();
     _futureWorkflows =
-        ApiService().getCompletedWorkflows(widget.userdata['id'], widget.token);
+        ApiService().getCompletedWorkflows(widget.userdata['userId'], widget.token);
   }
 
   @override

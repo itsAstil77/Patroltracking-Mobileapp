@@ -7,6 +7,7 @@ import 'package:patroltracking/patrol/patrolMultimediaScreen.dart';
 import 'package:patroltracking/patrol/patroldashboard.dart';
 //import 'package:patroltracking/patrol/patrolEvent.dart';
 import 'package:patroltracking/profile.dart';
+import 'package:patroltracking/settings.dart';
 
 class CustomDrawer extends StatelessWidget {
   final Map<String, dynamic> userdata;
@@ -71,12 +72,22 @@ class CustomDrawer extends StatelessWidget {
                 context,
                 ProfileScreen(
                   user: userdata,
+                  mode: '',
+                  token: token,
                 ));
           }),
           _buildDrawerItem(context, Icons.event_available, 'Workflows', () {
             _navigateToScreen(
                 context,
                 WorkflowScreen(
+                  userdata: userdata,
+                  token: token,
+                ));
+          }),
+          _buildDrawerItem(context, Icons.settings, 'Settings', () {
+            _navigateToScreen(
+                context,
+                SettingsScreen(
                   userdata: userdata,
                   token: token,
                 ));

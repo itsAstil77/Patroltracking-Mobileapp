@@ -3,24 +3,24 @@ class ChecklistItem {
   final String checklistId;
   final String title;
   final String status;
-  final String locationCode;
+  final String? locationCode; // Made nullable to avoid exception
   final bool isActive;
 
   ChecklistItem({
     required this.checklistId,
     required this.title,
     required this.status,
-    required this.locationCode,
+    this.locationCode,
     required this.isActive,
   });
 
   factory ChecklistItem.fromJson(Map<String, dynamic> json) {
     return ChecklistItem(
-      checklistId: json['checklistId'],
-      title: json['title'],
-      status: json['status'],
-      locationCode: json['locationCode'],
-      isActive: json['isActive'],
+      checklistId: json['checklistId'] ?? '',
+      title: json['title'] ?? '',
+      status: json['status'] ?? '',
+      locationCode: json['locationCode'], // Can be null
+      isActive: json['isActive'] ?? false,
     );
   }
 }
@@ -56,7 +56,7 @@ class EventChecklistGroup {
       assignedEnd: json['AssignedEnd'] != null
           ? DateTime.tryParse(json['AssignedEnd'])
           : null,
-      checklists: (json['checklists'] as List)
+      checklists: (json['checklists'] as List<dynamic>)
           .map((item) => ChecklistItem.fromJson(item))
           .toList(),
     );

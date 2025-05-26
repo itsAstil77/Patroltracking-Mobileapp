@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:nfc_manager/nfc_manager.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:patroltracking/constants.dart' as constants;
 import 'package:patroltracking/services/api_service.dart';
 
@@ -50,6 +51,36 @@ class _PatrolChecklistScanScreenState extends State<PatrolChecklistScanScreen> {
     }
   }
 
+  Future<Position?> _getCurrentLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _showError("Location services are disabled.");
+        return null;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          _showError("Location permission denied.");
+          return null;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        _showError("Location permissions are permanently denied.");
+        return null;
+      }
+
+      return await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+    } catch (e) {
+      _showError("Failed to get location: $e");
+      return null;
+    }
+  }
+
   void _processScanResult(String result) async {
     if (scanResult != null) return;
 
@@ -58,10 +89,13 @@ class _PatrolChecklistScanScreenState extends State<PatrolChecklistScanScreen> {
 
     if (result.trim() == widget.scannerlocation.trim()) {
       try {
+        final position = await _getCurrentLocation();
         final response = await ApiService.submitScan(
           scanType: selectedScanMode.name.toUpperCase(),
           checklistId: widget.checklistId,
           token: widget.token,
+          latitude: position!.latitude,
+          longitude: position.longitude,
         );
 
         if (response['message'] ==
@@ -109,10 +143,13 @@ class _PatrolChecklistScanScreenState extends State<PatrolChecklistScanScreen> {
             setState(() => scanResult = tagValue);
             await NfcManager.instance.stopSession();
 
+            final position = await _getCurrentLocation();
             final response = await ApiService.submitScan(
               scanType: "NFC",
               checklistId: widget.checklistId,
               token: widget.token,
+              latitude: position!.latitude,
+              longitude: position.longitude,
             );
 
             if (response['message'] ==

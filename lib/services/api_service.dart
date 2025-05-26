@@ -11,6 +11,31 @@ import 'package:patroltracking/models/workflow.dart';
 class ApiService {
   static final String _baseUrl = AppConstants.baseUrl;
 
+//Licence Access
+  static Future<Map<String, dynamic>> verifyLicenseKey({
+    required String serialNumber,
+    required String macId,
+    required String licenseKey,
+  }) async {
+    final url = Uri.parse("$_baseUrl/verify-license");
+
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        "serialNumber": serialNumber,
+        "macId": macId,
+        "licenseKey": licenseKey,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      return {'status': response.statusCode};
+    }
+  }
+
 // login api request
   static Future<Map<String, dynamic>> login({
     required String username,
@@ -117,13 +142,15 @@ class ApiService {
   }
 
 // start time update api in workflow
-  static Future<bool> startWorkflow(String workflowId, String token) async {
+  static Future<bool> startWorkflow(String workflowId, String token,
+      {required double latitude, required double longitude}) async {
     final url = Uri.parse('$_baseUrl/workflow/start/$workflowId');
 
     final startTime = DateTime.now().toUtc().toIso8601String();
 
     final body = jsonEncode({
       'startDateTime': startTime,
+      'startCoordinate': '$latitude,$longitude',
     });
 
     try {
@@ -196,11 +223,12 @@ class ApiService {
   }
 
 // create scanning record
-  static Future<Map<String, dynamic>> submitScan({
-    required String scanType,
-    required String checklistId,
-    required String token,
-  }) async {
+  static Future<Map<String, dynamic>> submitScan(
+      {required String scanType,
+      required String checklistId,
+      required String token,
+      required double latitude,
+      required double longitude}) async {
     final url = Uri.parse("$_baseUrl/scanning");
 
     final response = await http.post(
@@ -212,6 +240,7 @@ class ApiService {
       body: jsonEncode({
         "scanType": scanType,
         "checklistId": checklistId,
+        "coordinates": '$latitude,$longitude',
       }),
     );
 
@@ -229,7 +258,7 @@ class ApiService {
     required String token,
   }) async {
     final url = Uri.parse(
-        "$_baseUrl/workflow/workflow-patrol?workflowId=$workflowId&patrolId=$patrolId");
+        "$_baseUrl/workflow/workflow-patrol?workflowId=$workflowId&userId=$patrolId");
 
     final response = await http.get(
       url,
@@ -266,7 +295,7 @@ class ApiService {
 
     final request = http.MultipartRequest('POST', uri)
       ..headers['Authorization'] = 'Bearer $token' // Adding the bearer token
-      ..fields['patrolId'] = patrolId
+      ..fields['userId'] = patrolId
       ..fields['checklistId'] = checklistId
       ..files.add(await http.MultipartFile.fromPath(
         'signatureImage',
@@ -285,15 +314,16 @@ class ApiService {
   }
 
 // insert multimedia
-  static Future<http.Response> uploadMultimedia({
-    required String token,
-    required String checklistId,
-    required File mediaFile,
-    required String mediaType,
-    required String description,
-    required String patrolId,
-    required String createdBy,
-  }) async {
+  static Future<http.Response> uploadMultimedia(
+      {required String token,
+      required String checklistId,
+      required File mediaFile,
+      required String mediaType,
+      required String description,
+      required String patrolId,
+      required String createdBy,
+      required double latitude,
+      required double longitude}) async {
     final uri = Uri.parse('$_baseUrl/media');
 
     final request = http.MultipartRequest('POST', uri);
@@ -304,8 +334,9 @@ class ApiService {
     request.fields['checklistId'] = checklistId;
     request.fields['mediaType'] = mediaType;
     request.fields['description'] = description;
-    request.fields['patrolId'] = patrolId;
+    request.fields['userId'] = patrolId;
     request.fields['createdBy'] = createdBy;
+    request.fields['coordinates'] = '$latitude,$longitude';
 
     request.files.add(await http.MultipartFile.fromPath(
       'mediaFile',
@@ -380,9 +411,12 @@ class ApiService {
   }
 
 // update end time and status completed in workflow
-  static Future<bool> completeWorkflow(String workflowId, String token) async {
+  static Future<bool> completeWorkflow(String workflowId, String token,
+      {required double latitude, required double longitude}) async {
     final url = Uri.parse('$_baseUrl/workflow/done/$workflowId');
-
+    final body = jsonEncode({
+      'endCoordinate': '$latitude,$longitude',
+    });
     try {
       final response = await http.post(
         url,
@@ -390,6 +424,7 @@ class ApiService {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
         },
+        body: body,
       );
 
       if (response.statusCode == 200) {
@@ -400,7 +435,7 @@ class ApiService {
         return false;
       }
     } catch (e) {
-      print('❌ Exception during workflow completion: $e');
+      print('❌ Exception during assignment completion: $e');
       return false;
     }
   }
@@ -477,6 +512,36 @@ class ApiService {
       }
     } catch (e) {
       throw Exception('Error fetching completed workflows: $e');
+    }
+  }
+
+//Create the SOS record creation
+  static Future<Map<String, dynamic>> sendSOSAlert({
+    required String userid,
+    required String remarks,
+    required String token,
+    required double latitude,
+    required double longitude,
+  }) async {
+    final url = Uri.parse("$_baseUrl/sos");
+
+    final response = await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        "userId": userid,
+        "remarks": remarks,
+        "coordinates": '$latitude,$longitude',
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body); // ✅ returns a Map<String, dynamic>
+    } else {
+      throw Exception("Failed to submit SOS. Status: ${response.statusCode}");
     }
   }
 }

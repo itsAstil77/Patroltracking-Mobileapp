@@ -80,7 +80,7 @@ class _PatrolIncidentScreenState extends State<PatrolIncidentScreen> {
     try {
       final response = await ApiService.sendIncidents(
         token: widget.token,
-        patrolId: widget.user['id'],
+        patrolId: widget.user['userId'],
         incidentCodes: selectedCodes,
       );
 

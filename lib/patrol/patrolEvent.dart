@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:patroltracking/constants.dart';
 import 'package:patroltracking/models/checklist.dart';
 import 'package:patroltracking/patrol/patrolChecklistScan.dart';
@@ -11,6 +12,7 @@ class PatrolEventCheckScreen extends StatefulWidget {
   final Map<String, dynamic> userdata;
   final String token;
   final String eventtitle;
+
   const PatrolEventCheckScreen({
     super.key,
     required this.userdata,
@@ -29,18 +31,51 @@ class _PatrolEventCheckScreenState extends State<PatrolEventCheckScreen> {
   List<Map<String, dynamic>> _filteredChecklists = [];
   final Map<String, bool> _selectedChecklists = {};
   bool _isLoading = true;
-  //late Future<List<EventChecklistGroup>> _checklistsFuture;
+  double? _latitude;
+  double? _longitude;
+
   @override
   void initState() {
     super.initState();
+    _getCurrentLocation();
     _loadChecklists();
+  }
+
+  Future<void> _getCurrentLocation() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Location services are disabled.')),
+      );
+      return;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      permission = await Geolocator.requestPermission();
+      if (permission != LocationPermission.always &&
+          permission != LocationPermission.whileInUse) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location permission denied.')),
+        );
+        return;
+      }
+    }
+
+    Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high);
+    setState(() {
+      _latitude = position.latitude;
+      _longitude = position.longitude;
+    });
   }
 
   void _loadChecklists() async {
     try {
       final checklists = await ApiService.fetchWorkflowPatrolChecklists(
         workflowId: widget.eventId,
-        patrolId: widget.userdata['id'],
+        patrolId: widget.userdata['userId'],
         token: widget.token,
       );
       setState(() {
@@ -84,14 +119,14 @@ class _PatrolEventCheckScreenState extends State<PatrolEventCheckScreen> {
       return;
     }
 
-    // Step 1: Complete selected checklists
     final message = await ApiService.completeChecklists(selected, widget.token);
 
     if (message != null) {
-      // Step 2: Call completeWorkflow if checklists update successfully
       final workflowCompleted = await ApiService.completeWorkflow(
         widget.eventId,
         widget.token,
+        latitude: _latitude!,
+        longitude: _longitude!,
       );
 
       if (workflowCompleted) {
@@ -111,7 +146,7 @@ class _PatrolEventCheckScreenState extends State<PatrolEventCheckScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content:
-                  Text("Checklists updated, but failed to complete workflow")),
+                  Text("Checklists updated, but failed to complete assignment")),
         );
       }
     } else {
@@ -123,17 +158,13 @@ class _PatrolEventCheckScreenState extends State<PatrolEventCheckScreen> {
 
   void _updateChecklist(String checklistId) async {
     try {
-      final scanEndDate =
-          await ApiService.updateScanEndTime(checklistId, widget.token);
-
+      await ApiService.updateScanEndTime(checklistId, widget.token);
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Checklist-$checklistId submitted')),
       );
     } catch (e) {
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: ${e.toString()}')),
       );
@@ -149,11 +180,13 @@ class _PatrolEventCheckScreenState extends State<PatrolEventCheckScreen> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: AppConstants.primaryColor),
           onPressed: () async {
-            // Call your API before navigating back
-            await ApiService.completeWorkflow(widget.eventId, widget.token);
+            await ApiService.completeWorkflow(
+              widget.eventId,
+              widget.token,
+              latitude: _latitude!,
+              longitude: _longitude!,
+            );
 
-            // Then navigate back
-            //Navigator.pop(context);
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
@@ -167,9 +200,9 @@ class _PatrolEventCheckScreenState extends State<PatrolEventCheckScreen> {
         ),
       ),
       body: _isLoading
-          ? Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator())
           : Padding(
-              padding: EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
                   TextField(
@@ -179,11 +212,11 @@ class _PatrolEventCheckScreenState extends State<PatrolEventCheckScreen> {
                       labelText: "Search Checklist",
                       prefixIcon:
                           Icon(Icons.search, color: AppConstants.primaryColor),
-                      border: OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
                     ),
                     onChanged: _filterChecklists,
                   ),
-                  SizedBox(height: 10),
+                  const SizedBox(height: 10),
                   Expanded(
                     child: SingleChildScrollView(
                       child: Column(
@@ -200,7 +233,7 @@ class _PatrolEventCheckScreenState extends State<PatrolEventCheckScreen> {
                                 )
                               : ListView.builder(
                                   shrinkWrap: true,
-                                  physics: NeverScrollableScrollPhysics(),
+                                  physics: const NeverScrollableScrollPhysics(),
                                   itemCount: _filteredChecklists.length,
                                   itemBuilder: (context, index) {
                                     final checklist =
@@ -215,9 +248,10 @@ class _PatrolEventCheckScreenState extends State<PatrolEventCheckScreen> {
 
                                     return Card(
                                       elevation: 2,
-                                      margin: EdgeInsets.symmetric(vertical: 6),
+                                      margin: const EdgeInsets.symmetric(
+                                          vertical: 6),
                                       child: Padding(
-                                        padding: EdgeInsets.symmetric(
+                                        padding: const EdgeInsets.symmetric(
                                             horizontal: 8.0, vertical: 4),
                                         child: Row(
                                           children: [
@@ -234,8 +268,6 @@ class _PatrolEventCheckScreenState extends State<PatrolEventCheckScreen> {
                                                     .normalPurpleFontStyle,
                                               ),
                                             ),
-
-                                            // QR SCANNER ICON
                                             IconButton(
                                               icon: Icon(
                                                 Icons.qr_code_scanner,
@@ -249,7 +281,6 @@ class _PatrolEventCheckScreenState extends State<PatrolEventCheckScreen> {
                                                           checklist[
                                                                   'locationCode'] ??
                                                               '';
-
                                                       Navigator.push(
                                                         context,
                                                         MaterialPageRoute(
@@ -265,7 +296,6 @@ class _PatrolEventCheckScreenState extends State<PatrolEventCheckScreen> {
                                                           ),
                                                         ),
                                                       );
-
                                                       setState(() {
                                                         checklist['isScanned'] =
                                                             true;
@@ -273,8 +303,6 @@ class _PatrolEventCheckScreenState extends State<PatrolEventCheckScreen> {
                                                     }
                                                   : null,
                                             ),
-
-                                            // MEDIA ICON
                                             IconButton(
                                               icon: Icon(
                                                 Icons.perm_media,
@@ -303,8 +331,6 @@ class _PatrolEventCheckScreenState extends State<PatrolEventCheckScreen> {
                                                     }
                                                   : null,
                                             ),
-
-                                            // CHECK ICON
                                             IconButton(
                                               icon: Icon(
                                                 Icons.check,
@@ -333,7 +359,7 @@ class _PatrolEventCheckScreenState extends State<PatrolEventCheckScreen> {
                                     );
                                   },
                                 ),
-                          SizedBox(height: 20),
+                          const SizedBox(height: 20),
                           ElevatedButton.icon(
                             icon: Icon(Icons.send,
                                 color: AppConstants.primaryColor),
@@ -343,10 +369,10 @@ class _PatrolEventCheckScreenState extends State<PatrolEventCheckScreen> {
                             ),
                             onPressed: _sendChecklists,
                             style: ElevatedButton.styleFrom(
-                              minimumSize: Size(double.infinity, 50),
+                              minimumSize: const Size(double.infinity, 50),
                             ),
                           ),
-                          SizedBox(height: 10),
+                          const SizedBox(height: 10),
                         ],
                       ),
                     ),

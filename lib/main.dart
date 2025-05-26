@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:patroltracking/Login/onboarding.dart';
 import 'package:patroltracking/constants.dart';
+import 'package:patroltracking/licence.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
@@ -65,15 +67,22 @@ class _SplashScreenState extends State<SplashScreen> {
 
     Timer(const Duration(seconds: 3), () {
       if (isFirstLaunch) {
+        // prefs.setBool('isFirstLaunch', false); // Mark as not first launch
+        // Navigator.of(context).pushReplacement(
+        //   MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+        // );
         prefs.setBool('isFirstLaunch', false); // Mark as not first launch
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+          MaterialPageRoute(builder: (_) => const LicenseScreen()),
         );
       } else {
+        // Navigator.of(context).pushReplacement(
+        //   MaterialPageRoute(
+        //       builder: (_) =>
+        //           const OnboardingScreen()), // Change to LoginScreen if neededq
+        // );
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-              builder: (_) =>
-                  const OnboardingScreen()), // Change to LoginScreen if needed
+          MaterialPageRoute(builder: (_) => const LicenseScreen()),
         );
       }
     });

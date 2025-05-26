@@ -151,7 +151,7 @@ class AppConstants {
     fontSize: 16,
     fontFamily: AppConstants.fontFamily,
     fontWeight: FontWeight.bold,
-    color: Colors.purple.shade900,
+    color: AppConstants.primaryColor,
   );
   static TextStyle normalPurpleFontStyle = TextStyle(
     fontSize: 16,
