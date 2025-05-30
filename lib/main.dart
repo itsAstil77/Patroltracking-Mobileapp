@@ -1,11 +1,15 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:patroltracking/Login/login.dart';
 import 'package:patroltracking/Login/onboarding.dart';
 import 'package:patroltracking/constants.dart';
 import 'package:patroltracking/licence.dart';
+import 'package:patroltracking/services/api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
@@ -50,7 +54,6 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  final Completer<GoogleMapController> _controller = Completer();
   Position? _currentPosition;
 
   @override
@@ -62,51 +65,56 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _checkPermissionsAndNavigate() async {
     await _determinePosition();
 
-    final prefs = await SharedPreferences.getInstance();
-    final bool isFirstLaunch = prefs.getBool('isFirstLaunch') ?? true;
+    String deviceId = await _getDeviceId();
 
-    Timer(const Duration(seconds: 3), () {
-      if (isFirstLaunch) {
-        // prefs.setBool('isFirstLaunch', false); // Mark as not first launch
-        // Navigator.of(context).pushReplacement(
-        //   MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-        // );
-        prefs.setBool('isFirstLaunch', false); // Mark as not first launch
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const LicenseScreen()),
-        );
+    // Check if device is authorized
+    final isAuthorized = await ApiService.checkDeviceAuthorization(deviceId);
+
+    // Save first launch flag
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setBool('isFirstLaunch', false);
+
+    if (!mounted) return;
+
+    // Navigate based on authorization status
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) =>
+            isAuthorized ? const LoginScreen() : const LicenseScreen(),
+      ),
+    );
+  }
+
+  Future<String> _getDeviceId() async {
+    final DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+
+    try {
+      if (Platform.isAndroid) {
+        final androidInfo = await deviceInfo.androidInfo;
+        return androidInfo.id;
+      } else if (Platform.isIOS) {
+        final iosInfo = await deviceInfo.iosInfo;
+        return iosInfo.identifierForVendor ?? 'UnknownIOSId';
       } else {
-        // Navigator.of(context).pushReplacement(
-        //   MaterialPageRoute(
-        //       builder: (_) =>
-        //           const OnboardingScreen()), // Change to LoginScreen if neededq
-        // );
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const LicenseScreen()),
-        );
+        return 'UnsupportedPlatform';
       }
-    });
+    } catch (e) {
+      print("Device ID Error: $e");
+      return 'ErrorGettingDeviceId';
+    }
   }
 
   Future<void> _determinePosition() async {
-    bool serviceEnabled;
-    LocationPermission permission;
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return;
 
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      return;
-    }
-
-    permission = await Geolocator.checkPermission();
+    LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
         return;
       }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      return;
     }
 
     Position position = await Geolocator.getCurrentPosition();

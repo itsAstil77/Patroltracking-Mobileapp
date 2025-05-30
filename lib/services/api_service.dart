@@ -12,28 +12,95 @@ class ApiService {
   static final String _baseUrl = AppConstants.baseUrl;
 
 //Licence Access
-  static Future<Map<String, dynamic>> verifyLicenseKey({
-    required String serialNumber,
-    required String macId,
-    required String licenseKey,
-  }) async {
-    final url = Uri.parse("$_baseUrl/verify-license");
+  //Licence Validation
+  static Future<bool> checkDeviceAuthorization(String deviceId) async {
+    final url = Uri.parse('$_baseUrl/license/check-device');
+    final body = {'deviceId': deviceId};
 
-    final response = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        "serialNumber": serialNumber,
-        "macId": macId,
-        "licenseKey": licenseKey,
-      }),
-    );
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
 
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      return {'status': response.statusCode};
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['authorized'] == true;
+      } else {
+        print('❌ Device check failed: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      print('🔥 Error during device check: $e');
+      return false;
     }
+  }
+
+  //Licence key generator
+  static Future<String?> registerLicense({
+    required String serialNumber,
+    required String deviceId,
+  }) async {
+    final url = Uri.parse('$_baseUrl/license/register');
+    final body = {
+      'serialNumber': serialNumber,
+      'deviceId': deviceId,
+    };
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+
+      print('➡️ Requesting: $url');
+      print('➡️ Body: $body');
+      print('⬅️ Status: ${response.statusCode}');
+      print('⬅️ Response: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['uniqueKey']; // success
+      } else {
+        print('License registration failed: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('Error during license registration: $e');
+      return null;
+    }
+  }
+
+  //Licence key verification
+  static Future<bool> validateLicense({
+    required String serialNumber,
+    required String deviceId,
+    required String uniqueKey,
+  }) async {
+    final url = Uri.parse('$_baseUrl/license/validate');
+    final body = {
+      'serialNumber': serialNumber,
+      'deviceId': deviceId,
+      'uniqueKey': uniqueKey,
+    };
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['authorized'] == true;
+      }
+    } catch (e) {
+      print('Validation error: $e');
+    }
+    return false;
   }
 
 // login api request
